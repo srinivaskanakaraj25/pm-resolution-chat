@@ -1,7 +1,9 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from db import init_db, list_conversations, get_conversation, update_conversation
 from agent_client import AgentClient
@@ -9,13 +11,20 @@ from agent_client import AgentClient
 app = FastAPI(title="PM Resolution Chat")
 db_conn = init_db()
 
+api_key_header = APIKeyHeader(name="X-API-Key")
+
+def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != os.environ["API_KEY"]:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return api_key
+
 
 class MessageRequest(BaseModel):
     message: str
 
 
 @app.post("/conversations")
-async def start_conversation(body: MessageRequest):
+async def start_conversation(body: MessageRequest, _: str = Security(verify_api_key)):
     """Start a new conversation."""
     agent = AgentClient(db_conn=db_conn)
     await agent.connect()
@@ -27,7 +36,7 @@ async def start_conversation(body: MessageRequest):
 
 
 @app.post("/conversations/{id}/message")
-async def send_message(id: str, body: MessageRequest):
+async def send_message(id: str, body: MessageRequest, _: str = Security(verify_api_key)):
     """Send a message to an existing conversation."""
     conv = get_conversation(db_conn, id)
     if not conv:
@@ -44,13 +53,13 @@ async def send_message(id: str, body: MessageRequest):
 
 
 @app.get("/conversations")
-async def list_all():
+async def list_all(_: str = Security(verify_api_key)):
     """List all conversations."""
     return list_conversations(db_conn)
 
 
 @app.post("/conversations/{id}/exit-resolution")
-async def exit_resolution(id: str):
+async def exit_resolution(id: str, _: str = Security(verify_api_key)):
     """Manually exit resolution mode for a conversation."""
     conv = get_conversation(db_conn, id)
     if not conv:
