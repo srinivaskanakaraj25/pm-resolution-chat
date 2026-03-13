@@ -63,6 +63,8 @@ class AgentClient:
             hooks=hooks,
             resume=resume_session_id,
             debug_stderr=sys.stderr,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            setting_sources=["project"],
         )
 
         self.client = ClaudeSDKClient(options=options)
