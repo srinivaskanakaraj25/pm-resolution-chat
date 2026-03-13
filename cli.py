@@ -1,143 +1,119 @@
-import asyncio
 from dotenv import load_dotenv
 load_dotenv()
-import sys
+
+import os
+import asyncio
+import httpx
 import typer
-from typing import Optional
-from agent_client import AgentClient
-from db import init_db, list_conversations, get_conversation
 
 app = typer.Typer(no_args_is_help=True)
+
+BASE_URL = os.environ.get("API_BASE_URL", "https://pm-resolution-chat-production.up.railway.app")
+API_KEY = os.environ.get("API_KEY", "")
+
+def client() -> httpx.Client:
+    return httpx.Client(
+        base_url=BASE_URL,
+        headers={"X-API-Key": API_KEY},
+        timeout=120,
+    )
 
 
 @app.command()
 def start() -> None:
     """Start a new conversation."""
-    try:
-        db_conn = init_db()
-    except Exception as e:
-        typer.secho(
-            f"Error: Could not open database. Make sure conversations.db exists and table is set up.\n{e}",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
+    user = input("You: ").strip()
+    if not user:
+        return
 
-    async def run():
-        agent = AgentClient(db_conn=db_conn)
-        await agent.connect()
+    with client() as http:
+        r = http.post("/conversations", json={"message": user})
+        r.raise_for_status()
+        data = r.json()
+        session_id = data["session_id"]
+        typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
 
-        typer.secho(
-            "Agent started. Type /quit to exit, /normal to exit resolution mode.",
-            fg=typer.colors.CYAN,
-        )
+    typer.secho(f"\n[session: {session_id}]", fg=typer.colors.BRIGHT_BLACK)
+    typer.secho("Type /quit to exit, /normal to exit resolution mode.", fg=typer.colors.CYAN)
 
-        try:
-            while True:
-                user = input("You: ").strip()
+    with client() as http:
+        while True:
+            user = input("You: ").strip()
 
-                if user == "/quit":
-                    break
+            if user == "/quit":
+                break
 
-                if user == "/normal":
-                    agent.exit_resolution_mode()
-                    typer.secho(
-                        "Resolution mode will exit on next turn.", fg=typer.colors.YELLOW
-                    )
-                    continue
+            if user == "/normal":
+                r = http.post(f"/conversations/{session_id}/exit-resolution")
+                r.raise_for_status()
+                typer.secho("Resolution mode exited.", fg=typer.colors.YELLOW)
+                continue
 
-                await agent.send(user)
-
-        finally:
-            await agent.disconnect()
-
-    asyncio.run(run())
+            r = http.post(f"/conversations/{session_id}/message", json={"message": user})
+            r.raise_for_status()
+            data = r.json()
+            typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
 
 
 @app.command()
 def ls() -> None:
     """List all previous conversations."""
-    try:
-        db_conn = init_db()
-    except Exception as e:
-        typer.secho(
-            f"Error: Could not open database. Make sure conversations.db exists.\n{e}",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    convs = list_conversations(db_conn)
+    with client() as http:
+        r = http.get("/conversations")
+        r.raise_for_status()
+        convs = r.json()
 
     if not convs:
         typer.secho("No conversations found.", fg=typer.colors.YELLOW)
         return
 
-    # Header
     typer.echo("#    Title                                                Date                 Mode")
     typer.echo("-" * 90)
 
     for i, conv in enumerate(convs, 1):
         title = conv["title"][:50].ljust(50)
-        created = conv["updated_at"][:16]  # ISO format: YYYY-MM-DD HH:MM
+        date = conv["updated_at"][:16]
         mode = conv["mode"]
-        typer.echo(f"{i:<4} {title}  {created}  {mode}")
+        typer.echo(f"{i:<4} {title}  {date}  {mode}")
 
 
 @app.command()
 def resume(identifier: str) -> None:
     """Resume a previous conversation by index or session UUID."""
-    try:
-        db_conn = init_db()
-    except Exception as e:
-        typer.secho(
-            f"Error: Could not open database. Make sure conversations.db exists.\n{e}",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    conv = get_conversation(db_conn, identifier)
-
-    if not conv:
-        typer.secho(
-            f"Conversation not found: {identifier}",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
-
-    session_id = conv["session_id"]
-    mode = conv["mode"]
-    failure_context = conv["failure_context"]
-
-    async def run():
-        agent = AgentClient(db_conn=db_conn, resume_session_id=session_id)
-        agent.restore_state(mode, failure_context)
-        await agent.connect()
-
-        typer.secho(
-            f"Resumed conversation (mode: {mode}). Type /quit to exit, /normal to exit resolution mode.",
-            fg=typer.colors.CYAN,
-        )
-
+    with client() as http:
+        # resolve index to session_id via ls
         try:
-            while True:
-                user = input("You: ").strip()
+            index = int(identifier)
+            r = http.get("/conversations")
+            r.raise_for_status()
+            convs = r.json()
+            if not 1 <= index <= len(convs):
+                typer.secho(f"No conversation at index {index}.", fg=typer.colors.RED)
+                raise typer.Exit(1)
+            session_id = convs[index - 1]["session_id"]
+        except ValueError:
+            session_id = identifier
 
-                if user == "/quit":
-                    break
+    typer.secho(f"Resumed [session: {session_id}]", fg=typer.colors.CYAN)
+    typer.secho("Type /quit to exit, /normal to exit resolution mode.", fg=typer.colors.CYAN)
 
-                if user == "/normal":
-                    agent.exit_resolution_mode()
-                    typer.secho(
-                        "Resolution mode will exit on next turn.",
-                        fg=typer.colors.YELLOW,
-                    )
-                    continue
+    with client() as http:
+        while True:
+            user = input("You: ").strip()
 
-                await agent.send(user)
+            if user == "/quit":
+                break
 
-        finally:
-            await agent.disconnect()
+            if user == "/normal":
+                r = http.post(f"/conversations/{session_id}/exit-resolution")
+                r.raise_for_status()
+                typer.secho("Resolution mode exited.", fg=typer.colors.YELLOW)
+                continue
 
-    asyncio.run(run())
+            r = http.post(f"/conversations/{session_id}/message", json={"message": user})
+            r.raise_for_status()
+            data = r.json()
+            typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
 
 
 if __name__ == "__main__":
