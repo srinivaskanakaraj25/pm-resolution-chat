@@ -7,7 +7,7 @@ from claude_agent_sdk import (
 )
 import os
 import json
-import sqlite3
+import psycopg2
 from typing import Optional
 from db import create_conversation, update_conversation
 
@@ -39,7 +39,7 @@ class AgentState:
 class AgentClient:
     def __init__(
         self,
-        db_conn: Optional[sqlite3.Connection] = None,
+        db_conn: Optional[psycopg2.extensions.connection] = None,
         resume_session_id: Optional[str] = None,
     ):
         self.state = AgentState()
@@ -71,15 +71,15 @@ class AgentClient:
     async def disconnect(self):
         await self.client.disconnect()
 
-    async def send(self, text: str) -> None:
-        """Send text and print Claude's response."""
+    async def send(self, text: str) -> str:
+        """Send text and return Claude's response."""
         await self.client.query(text)
+        response_parts = []
         async for msg in self.client.receive_response():
             if isinstance(msg, AssistantMessage):
                 for block in msg.content:
                     if isinstance(block, TextBlock):
-                        print(f"Claude: {block.text}", end="", flush=True)
-                print()
+                        response_parts.append(block.text)
 
         # Persist state after each turn
         if self.db_conn is not None and self.session_id is not None:
@@ -89,6 +89,10 @@ class AgentClient:
                 else None
             )
             update_conversation(self.db_conn, self.session_id, self.state.mode, fc)
+
+        response = "".join(response_parts)
+        print(f"Claude: {response}")
+        return response
 
     def exit_resolution_mode(self):
         self.state.exit_resolution()
@@ -120,17 +124,14 @@ class AgentClient:
         return {}
 
     async def user_prompt_submit(self, input_data, tool_use_id, context):
-        # Capture session_id on first call
         if self.session_id is None:
             self.session_id = input_data.get("session_id")
 
-        # Create DB row on first user message (if DB is available)
         if not self._title_saved and self.db_conn is not None:
             title = (input_data.get("prompt", "") or "")[:50].strip() or "(no title)"
             create_conversation(self.db_conn, self.session_id, title)
             self._title_saved = True
 
-        # Inject prompts based on mode
         if self.state.mode == "resolution" and self.state.mode_changed:
             self.state.clear_transition_flag()
             return {
