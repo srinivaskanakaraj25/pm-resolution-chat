@@ -57,10 +57,12 @@ class AgentClient:
             ],
         }
 
+        import sys
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
             hooks=hooks,
             resume=resume_session_id,
+            debug_stderr=sys.stderr,
         )
 
         self.client = ClaudeSDKClient(options=options)
