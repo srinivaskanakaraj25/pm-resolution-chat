@@ -1,4 +1,4 @@
-# Agent Project
+# PM Resolution Chat
 
 Claude Agent SDK example with runtime resolution mode triggered by 422 tool failures.
 
@@ -10,9 +10,9 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Create the database once:
+Copy `.env.example` to `.env` and fill in your values:
 ```bash
-sqlite3 conversations.db "CREATE TABLE conversations (session_id TEXT PRIMARY KEY, title TEXT NOT NULL, mode TEXT NOT NULL DEFAULT 'normal', failure_context TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+cp .env.example .env
 ```
 
 ## Usage
