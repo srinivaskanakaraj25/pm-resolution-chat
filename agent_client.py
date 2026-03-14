@@ -61,6 +61,15 @@ class AgentClient:
             with open("/tmp/claude_debug.log", "a") as f:
                 f.write(line + "\n")
 
+        mcp_servers = {}
+        rocketlane_api_key = os.environ.get("ROCKETLANE_API_KEY")
+        if rocketlane_api_key:
+            mcp_servers["rocket-mcp-v2-remote"] = {
+                "type": "http",
+                "url": "https://rocket-mcp.rl-platforms.rocketlane.com/mcp",
+                "headers": {"api-key": rocketlane_api_key},
+            }
+
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
             hooks=hooks,
@@ -68,6 +77,7 @@ class AgentClient:
             stderr=_stderr_callback,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
+            mcp_servers=mcp_servers or None,
         )
 
         self.client = ClaudeSDKClient(options=options)
