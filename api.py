@@ -85,6 +85,7 @@ async def debug_env(_: str = Security(verify_api_key)):
         "claude_dir_exists": os.path.exists(os.path.join(home, ".claude")),
         "claude_projects_exists": os.path.exists(projects_dir),
         "jsonl_files": jsonl_files,
+        "rocketlane_api_key_set": bool(os.environ.get("ROCKETLANE_API_KEY")),
     }
 
 
