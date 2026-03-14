@@ -67,6 +67,21 @@ async def debug_log(_: str = Security(verify_api_key)):
         return {"log": "no log yet"}
 
 
+@app.get("/debug/env")
+async def debug_env(_: str = Security(verify_api_key)):
+    import subprocess
+    claude_path = subprocess.run(["which", "claude"], capture_output=True, text=True).stdout.strip()
+    claude_version = subprocess.run(["claude", "--version"], capture_output=True, text=True)
+    return {
+        "claude_path": claude_path,
+        "claude_version_stdout": claude_version.stdout,
+        "claude_version_stderr": claude_version.stderr,
+        "home": os.environ.get("HOME"),
+        "claude_dir_exists": os.path.exists(os.path.expanduser("~/.claude")),
+        "claude_projects_exists": os.path.exists(os.path.expanduser("~/.claude/projects")),
+    }
+
+
 @app.post("/conversations/{id}/exit-resolution")
 async def exit_resolution(id: str, _: str = Security(verify_api_key)):
     """Manually exit resolution mode for a conversation."""
