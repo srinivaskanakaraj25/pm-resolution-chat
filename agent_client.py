@@ -58,11 +58,12 @@ class AgentClient:
         }
 
         import sys
+        self._debug_log = open("/tmp/claude_debug.log", "a")
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
             hooks=hooks,
             resume=resume_session_id,
-            debug_stderr=sys.stderr,
+            debug_stderr=self._debug_log,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
         )

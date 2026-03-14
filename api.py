@@ -58,6 +58,15 @@ async def list_all(_: str = Security(verify_api_key)):
     return list_conversations(db_conn)
 
 
+@app.get("/debug/claude-log")
+async def debug_log(_: str = Security(verify_api_key)):
+    try:
+        with open("/tmp/claude_debug.log") as f:
+            return {"log": f.read()[-5000:]}
+    except FileNotFoundError:
+        return {"log": "no log yet"}
+
+
 @app.post("/conversations/{id}/exit-resolution")
 async def exit_resolution(id: str, _: str = Security(verify_api_key)):
     """Manually exit resolution mode for a conversation."""
