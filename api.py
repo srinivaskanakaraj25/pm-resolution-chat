@@ -12,16 +12,6 @@ from agent_client import AgentClient
 app = FastAPI(title="PM Resolution Chat")
 
 
-@app.on_event("startup")
-async def restore_claude_config():
-    """Restore Claude config from volume backup if missing (volume mount overwrites ~/.claude)."""
-    import glob as g, shutil
-    config_path = "/root/.claude.json"
-    if not os.path.exists(config_path):
-        backups = sorted(g.glob("/root/.claude/backups/.claude.json.backup.*"))
-        if backups:
-            shutil.copy(backups[-1], config_path)
-
 
 db_conn = init_db()
 
