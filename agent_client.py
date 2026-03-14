@@ -78,6 +78,7 @@ class AgentClient:
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
             mcp_servers=mcp_servers or None,
+            permission_mode="bypassPermissions",
         )
 
         self.client = ClaudeSDKClient(options=options)
