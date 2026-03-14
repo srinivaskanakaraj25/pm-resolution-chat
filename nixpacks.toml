@@ -10,4 +10,4 @@ cmds = [
 ]
 
 [start]
-cmd = "su appuser -c 'uvicorn api:app --host 0.0.0.0 --port $PORT'"
+cmd = "su appuser -c '/usr/local/bin/uvicorn api:app --host 0.0.0.0 --port $PORT'"
