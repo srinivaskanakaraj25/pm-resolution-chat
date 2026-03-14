@@ -1,7 +1,8 @@
+import os
+os.environ["PATH"] = f"/root/.npm-global/bin:/usr/local/bin:{os.environ.get('PATH', '')}"
+
 from dotenv import load_dotenv
 load_dotenv()
-
-import os
 from fastapi import FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
