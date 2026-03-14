@@ -79,6 +79,7 @@ class AgentClient:
             setting_sources=["project"],
             mcp_servers=mcp_servers or None,
             permission_mode="bypassPermissions",
+            env={"CLAUDE_DANGEROUSLY_SKIP_PERMISSIONS_CHECK": "1"},
         )
 
         self.client = ClaudeSDKClient(options=options)
