@@ -67,11 +67,6 @@ class AgentClient:
             ],
         }
 
-        from tools import start_proxy
-        mcp_servers = {}
-        if rocketlane_api_key:
-            mcp_servers["rocketlane-proxy"] = start_proxy(rocketlane_api_key, self.request_id)
-
         claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
@@ -79,11 +74,6 @@ class AgentClient:
             resume=resume_session_id,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
-            mcp_servers=mcp_servers or None,
-            allowed_tools=[
-                "mcp__rocketlane-proxy__search_rocketlane_tools",
-                "mcp__rocketlane-proxy__call_rocketlane_tool",
-            ],
             stderr=lambda line: logger.debug("[claude stderr] %s", line),
             env={"CLAUDE_CONFIG_DIR": claude_config_dir},
         )
