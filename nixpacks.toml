@@ -1,13 +1,11 @@
 [phases.setup]
-nixPkgs = ["python312", "nodejs_20", "shadow"]
+nixPkgs = ["python312", "nodejs_20"]
 
 [phases.build]
 cmds = [
   "pip install -r requirements.txt",
-  "npm install -g @anthropic-ai/claude-code",
-  "useradd -m -s /bin/sh appuser || true",
-  "chown -R appuser:appuser /app"
+  "npm install -g @anthropic-ai/claude-code"
 ]
 
 [start]
-cmd = "su appuser -c '/usr/local/bin/uvicorn api:app --host 0.0.0.0 --port $PORT'"
+cmd = "uvicorn api:app --host 0.0.0.0 --port $PORT"

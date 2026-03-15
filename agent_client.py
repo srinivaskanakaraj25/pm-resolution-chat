@@ -74,7 +74,10 @@ class AgentClient:
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
             mcp_servers=mcp_servers or None,
-            permission_mode="bypassPermissions",
+            allowed_tools=[
+                "mcp__rocketlane-proxy__search_rocketlane_tools",
+                "mcp__rocketlane-proxy__call_rocketlane_tool",
+            ],
         )
 
         self.client = ClaudeSDKClient(options=options)
