@@ -89,6 +89,21 @@ async def debug_env(_: str = Security(verify_api_key)):
     }
 
 
+@app.get("/debug/rl-test")
+async def rl_test(_: str = Security(verify_api_key)):
+    import httpx
+    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
+    url = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
+    headers = {"api-key": api_key, "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    # Init session
+    r1 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}, timeout=15)
+    session_id = r1.headers.get("mcp-session-id")
+    headers["mcp-session-id"] = session_id
+    # Call tool
+    r2 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_all_projects","arguments":{}},"id":2}, timeout=30)
+    return {"status": r2.status_code, "body": r2.text[:500]}
+
+
 @app.post("/conversations/{id}/exit-resolution")
 async def exit_resolution(id: str, _: str = Security(verify_api_key)):
     """Manually exit resolution mode for a conversation."""
