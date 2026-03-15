@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import time
 import httpx
 import anthropic
 from pathlib import Path
@@ -9,6 +10,10 @@ ROCKETLANE_MCP_URL = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
 
 _TOOL_INDEX: list[dict] = []
 _MCP_SESSION_ID: str | None = None  # reused across all tool calls in this process
+
+_CACHE_DIR = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")) / "cache"
+_CACHE_FILE = _CACHE_DIR / "tool_index_cache.json"
+_CACHE_TTL = 24 * 3600  # 24 hours
 
 
 def _mcp_headers(api_key: str, session_id: str | None = None) -> dict:
@@ -86,6 +91,31 @@ def _fetch_tool_index_sync() -> list[dict]:
     return _parse_sse(resp.text).get("result", {}).get("tools", [])
 
 
+def _load_tool_index_cached() -> list[dict]:
+    """Return tool index from disk cache if < 24h old, else fetch and cache."""
+    try:
+        if _CACHE_FILE.exists():
+            if time.time() - _CACHE_FILE.stat().st_mtime < _CACHE_TTL:
+                cached = json.loads(_CACHE_FILE.read_text())
+                if isinstance(cached, list) and cached:
+                    print(f"Tool index loaded from cache ({len(cached)} tools).", file=sys.stderr, flush=True)
+                    return cached
+    except Exception as e:
+        print(f"Cache read error: {e}", file=sys.stderr, flush=True)
+
+    tools = _fetch_tool_index_sync()
+
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = _CACHE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(tools))
+        tmp.rename(_CACHE_FILE)
+    except Exception as e:
+        print(f"Cache write error: {e}", file=sys.stderr, flush=True)
+
+    return tools
+
+
 def _call_tool_sync(name: str, params: dict) -> str:
     valid_names = {t["name"] for t in _TOOL_INDEX}
     if name not in valid_names:
@@ -148,7 +178,7 @@ def _run_proxy_server():
     global _TOOL_INDEX
     print("Fetching Rocketlane tool index...", file=sys.stderr, flush=True)
     try:
-        _TOOL_INDEX = _fetch_tool_index_sync()
+        _TOOL_INDEX = _load_tool_index_cached()
         print(f"Loaded {len(_TOOL_INDEX)} tools.", file=sys.stderr, flush=True)
     except Exception as e:
         print(f"Failed to fetch tool index: {e}", file=sys.stderr, flush=True)
