@@ -38,39 +38,18 @@ def verify_api_key(api_key: str = Security(api_key_header)):
 
 class MessageRequest(BaseModel):
     message: str
-    rocketlane_api_key: str | None = None
     project_id: int | None = None
-
-
-def _read_tool_results(request_id: str) -> list[dict]:
-    """Read and cleanup full tool results written by the proxy for this request."""
-    results_dir = Path(os.environ.get("RAILWAY_VOLUME_MOUNT_PATH", "/data")) / "tool_results"
-    if not results_dir.exists():
-        return []
-    results = []
-    for path in sorted(results_dir.glob(f"{request_id}_*.json")):
-        try:
-            data = _json.loads(path.read_text())
-            # filename: {request_id}_{tool_name}_{timestamp}.json
-            parts = path.stem.split("_", 1)
-            tool_name = parts[1].rsplit("_", 1)[0] if len(parts) > 1 else "unknown"
-            results.append({"tool_name": tool_name, "data": data})
-            path.unlink()
-        except Exception:
-            continue
-    return results
 
 
 @app.post("/conversations")
 async def start_conversation(body: MessageRequest, _: str = Security(verify_api_key)):
     """Start a new conversation."""
     with get_conn(db_pool) as conn:
-        agent = AgentClient(db_conn=conn, rocketlane_api_key=body.rocketlane_api_key, project_id=body.project_id)
+        agent = AgentClient(db_conn=conn, project_id=body.project_id)
         await agent.connect()
         try:
             response = await agent.send(body.message)
-            tool_data = _read_tool_results(agent.request_id)
-            return {"session_id": agent.session_id, "response": response, "tool_data": tool_data}
+            return {"session_id": agent.session_id, "response": response}
         finally:
             await agent.disconnect()
 
@@ -86,15 +65,13 @@ async def send_message(id: str, body: MessageRequest, _: str = Security(verify_a
         agent = AgentClient(
             db_conn=conn,
             resume_session_id=conv["session_id"],
-            rocketlane_api_key=body.rocketlane_api_key,
             project_id=body.project_id or conv.get("project_id"),
         )
         agent.restore_state(conv["mode"], conv["failure_context"])
         await agent.connect()
         try:
             response = await agent.send(body.message)
-            tool_data = _read_tool_results(agent.request_id)
-            return {"response": response, "mode": agent.state.mode, "tool_data": tool_data}
+            return {"response": response, "mode": agent.state.mode}
         finally:
             await agent.disconnect()
 

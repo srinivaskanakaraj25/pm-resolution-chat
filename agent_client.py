@@ -10,7 +10,6 @@ import os
 import sys
 import json
 import logging
-import uuid
 import psycopg2
 from typing import Optional
 
@@ -47,7 +46,6 @@ class AgentClient:
         self,
         db_conn: Optional[psycopg2.extensions.connection] = None,
         resume_session_id: Optional[str] = None,
-        rocketlane_api_key: Optional[str] = None,
         project_id: Optional[int] = None,
     ):
         self.state = AgentState()
@@ -55,7 +53,6 @@ class AgentClient:
         self.db_conn = db_conn
         self.session_id = resume_session_id
         self.project_id = project_id
-        self.request_id = uuid.uuid4().hex[:8]
         self._title_saved = resume_session_id is not None
 
         hooks = {
@@ -180,7 +177,7 @@ class AgentClient:
         # Append project scope when a project_id is active
         project_ctx = (
             f"\n\n[Active project: {self.project_id}. "
-            f"Scope all Rocketlane queries and actions to this project unless the user explicitly asks otherwise.]"
+            f"Scope all queries and actions to this project unless the user explicitly asks otherwise.]"
             if self.project_id else ""
         )
 

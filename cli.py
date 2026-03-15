@@ -19,17 +19,13 @@ def client() -> httpx.Client:
 
 
 @app.command()
-def start(
-    rocketlane_key: str = typer.Option(None, "--rocketlane-key", "-r", help="Rocketlane API key"),
-) -> None:
+def start() -> None:
     """Start a new conversation."""
     user = input("You: ").strip()
     if not user:
         return
 
     body = {"message": user}
-    if rocketlane_key:
-        body["rocketlane_api_key"] = rocketlane_key
 
     with client() as http:
         r = http.post("/conversations", json=body)
@@ -55,8 +51,6 @@ def start(
                 continue
 
             body = {"message": user}
-            if rocketlane_key:
-                body["rocketlane_api_key"] = rocketlane_key
             r = http.post(f"/conversations/{session_id}/message", json=body)
             r.raise_for_status()
             data = r.json()
@@ -86,13 +80,9 @@ def ls() -> None:
 
 
 @app.command()
-def resume(
-    identifier: str,
-    rocketlane_key: str = typer.Option(None, "--rocketlane-key", "-r", help="Rocketlane API key"),
-) -> None:
+def resume(identifier: str) -> None:
     """Resume a previous conversation by index or session UUID."""
     with client() as http:
-        # resolve index to session_id via ls
         try:
             index = int(identifier)
             r = http.get("/conversations")
@@ -122,8 +112,6 @@ def resume(
                 continue
 
             body = {"message": user}
-            if rocketlane_key:
-                body["rocketlane_api_key"] = rocketlane_key
             r = http.post(f"/conversations/{session_id}/message", json=body)
             r.raise_for_status()
             data = r.json()

@@ -62,18 +62,6 @@ def test_start_conversation_returns_session_id_and_response(mock_agent, mocker):
     data = r.json()
     assert data["session_id"] == "test-session-id"
     assert data["response"] == "Test response"
-    assert "tool_data" in data
-
-
-def test_start_conversation_with_rocketlane_key_passes_key_to_agent(mock_agent, mocker):
-    mock_cls = mocker.patch("api.AgentClient", return_value=mock_agent)
-    client.post(
-        "/conversations",
-        json={"message": "Hello", "rocketlane_api_key": "rl-key-123"},
-        headers=HEADERS,
-    )
-    _, kwargs = mock_cls.call_args
-    assert kwargs.get("rocketlane_api_key") == "rl-key-123"
 
 
 def test_start_conversation_agent_error_propagates(mocker):
@@ -129,20 +117,6 @@ def test_send_message_restores_state_from_db(mock_agent, mocker):
         headers=HEADERS,
     )
     mock_agent.restore_state.assert_called_once_with("resolution", fc_json)
-
-
-def test_send_message_forwards_rocketlane_key(mock_agent, mocker):
-    conv = {"session_id": "sess-abc", "mode": "normal", "failure_context": None}
-    mocker.patch("api.get_conversation", return_value=conv)
-    mock_cls = mocker.patch("api.AgentClient", return_value=mock_agent)
-
-    client.post(
-        "/conversations/sess-abc/message",
-        json={"message": "Hi", "rocketlane_api_key": "rl-forwarded"},
-        headers=HEADERS,
-    )
-    _, kwargs = mock_cls.call_args
-    assert kwargs.get("rocketlane_api_key") == "rl-forwarded"
 
 
 # ---------------------------------------------------------------------------
