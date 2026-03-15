@@ -10,16 +10,77 @@ ROCKETLANE_MCP_URL = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
 _TOOL_INDEX: list[dict] = []
 
 
-def _fetch_tool_index_sync() -> list[dict]:
-    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
+def _mcp_headers(api_key: str, session_id: str | None = None) -> dict:
+    h = {
+        "api-key": api_key,
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+    }
+    if session_id:
+        h["mcp-session-id"] = session_id
+    return h
+
+
+def _parse_sse(text: str) -> dict:
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            return json.loads(line[5:])
+    return json.loads(text)
+
+
+def _mcp_init(api_key: str) -> str:
+    """Initialize MCP session, returns session_id."""
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
-        headers={"api-key": api_key, "Content-Type": "application/json"},
-        json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 1},
+        headers=_mcp_headers(api_key),
+        json={
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "pm-chat", "version": "1.0"},
+            },
+            "id": 1,
+        },
         timeout=30,
     )
     resp.raise_for_status()
-    return resp.json().get("result", {}).get("tools", [])
+    return resp.headers["mcp-session-id"]
+
+
+def _fetch_tool_index_sync() -> list[dict]:
+    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
+    session_id = _mcp_init(api_key)
+    resp = httpx.post(
+        ROCKETLANE_MCP_URL,
+        headers=_mcp_headers(api_key, session_id),
+        json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return _parse_sse(resp.text).get("result", {}).get("tools", [])
+
+
+def _call_tool_sync(name: str, params: dict) -> str:
+    valid_names = {t["name"] for t in _TOOL_INDEX}
+    if name not in valid_names:
+        return json.dumps({"error": f"Unknown tool: {name}"})
+    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
+    session_id = _mcp_init(api_key)
+    resp = httpx.post(
+        ROCKETLANE_MCP_URL,
+        headers=_mcp_headers(api_key, session_id),
+        json={
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {"name": name, "arguments": params},
+            "id": 2,
+        },
+        timeout=60,
+    )
+    resp.raise_for_status()
+    return json.dumps(_parse_sse(resp.text).get("result", {}))
 
 
 def _search_tools_sync(query: str, top_n: int = 8) -> list[dict]:
@@ -48,26 +109,6 @@ def _search_tools_sync(query: str, top_n: int = 8) -> list[dict]:
         for n in names
         if n in index_map
     ]
-
-
-def _call_tool_sync(name: str, params: dict) -> str:
-    valid_names = {t["name"] for t in _TOOL_INDEX}
-    if name not in valid_names:
-        return json.dumps({"error": f"Unknown tool: {name}"})
-    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    resp = httpx.post(
-        ROCKETLANE_MCP_URL,
-        headers={"api-key": api_key, "Content-Type": "application/json"},
-        json={
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": name, "arguments": params},
-            "id": 1,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return json.dumps(resp.json().get("result", {}))
 
 
 def _run_proxy_server():
@@ -114,9 +155,9 @@ def start_proxy() -> dict:
         "command": sys.executable,
         "args": [str(Path(__file__).resolve()), "--proxy"],
         "env": {
-            **os.environ,
             "ROCKETLANE_API_KEY": os.environ.get("ROCKETLANE_API_KEY", ""),
             "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+            "PATH": os.environ.get("PATH", ""),
         },
     }
 
