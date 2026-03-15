@@ -11,8 +11,6 @@ from agent_client import AgentClient
 
 app = FastAPI(title="PM Resolution Chat")
 
-
-
 db_conn = init_db()
 
 api_key_header = APIKeyHeader(name="X-API-Key")
@@ -25,12 +23,13 @@ def verify_api_key(api_key: str = Security(api_key_header)):
 
 class MessageRequest(BaseModel):
     message: str
+    rocketlane_api_key: str | None = None
 
 
 @app.post("/conversations")
 async def start_conversation(body: MessageRequest, _: str = Security(verify_api_key)):
     """Start a new conversation."""
-    agent = AgentClient(db_conn=db_conn)
+    agent = AgentClient(db_conn=db_conn, rocketlane_api_key=body.rocketlane_api_key)
     await agent.connect()
     try:
         response = await agent.send(body.message)
@@ -46,7 +45,7 @@ async def send_message(id: str, body: MessageRequest, _: str = Security(verify_a
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    agent = AgentClient(db_conn=db_conn, resume_session_id=conv["session_id"])
+    agent = AgentClient(db_conn=db_conn, resume_session_id=conv["session_id"], rocketlane_api_key=body.rocketlane_api_key)
     agent.restore_state(conv["mode"], conv["failure_context"])
     await agent.connect()
     try:
@@ -61,55 +60,6 @@ async def list_all(_: str = Security(verify_api_key)):
     """List all conversations."""
     return list_conversations(db_conn)
 
-
-@app.get("/debug/claude-log")
-async def debug_log(_: str = Security(verify_api_key)):
-    try:
-        with open("/tmp/claude_debug.log") as f:
-            return {"log": f.read()[-5000:]}
-    except FileNotFoundError:
-        return {"log": "no log yet"}
-
-
-
-@app.get("/debug/env")
-async def debug_env(_: str = Security(verify_api_key)):
-    import subprocess, glob as g
-    claude_path = subprocess.run(["which", "claude"], capture_output=True, text=True).stdout.strip()
-    home = os.path.expanduser("~")
-    projects_dir = os.path.join(home, ".claude", "projects")
-    jsonl_files = g.glob(os.path.join(projects_dir, "**", "*.jsonl"), recursive=True)
-    return {
-        "claude_path": claude_path,
-        "home": home,
-        "claude_dir_exists": os.path.exists(os.path.join(home, ".claude")),
-        "claude_projects_exists": os.path.exists(projects_dir),
-        "jsonl_files": jsonl_files,
-        "rocketlane_api_key_set": bool(os.environ.get("ROCKETLANE_API_KEY")),
-    }
-
-
-@app.get("/debug/rl-test")
-async def rl_test(_: str = Security(verify_api_key), tool: str = "get_all_projects", method: str = "tools/call"):
-    import httpx
-    api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    url = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
-    headers = {"api-key": api_key, "Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
-    # Init session
-    r1 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}, timeout=15)
-    session_id = r1.headers.get("mcp-session-id")
-    if not session_id:
-        return {"error": "No mcp-session-id in initialize response", "body": r1.text[:500]}
-    headers["mcp-session-id"] = session_id
-    # Send notifications/initialized to complete handshake
-    r_notify = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"notifications/initialized"}, timeout=15)
-    # Call method (tools/list or tools/call)
-    if method == "tools/list":
-        payload = {"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}
-    else:
-        payload = {"jsonrpc":"2.0","method":"tools/call","params":{"name":tool,"arguments":{}},"id":2}
-    r2 = httpx.post(url, headers=headers, json=payload, timeout=30)
-    return {"status": r2.status_code, "body": r2.text[:1000]}
 
 
 @app.post("/conversations/{id}/exit-resolution")

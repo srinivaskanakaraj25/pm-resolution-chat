@@ -167,16 +167,15 @@ def _run_proxy_server():
     proxy.run("stdio")
 
 
-def start_proxy() -> dict:
+def start_proxy(rocketlane_api_key: str) -> dict:
     """Returns McpStdioServerConfig for the Claude Agent SDK."""
-    rocketlane_key = os.environ.get("ROCKETLANE_API_KEY", "")
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     return {
         "command": sys.executable,
         "args": [
             str(Path(__file__).resolve()),
             "--proxy",
-            "--rocketlane-key", rocketlane_key,
+            "--rocketlane-key", rocketlane_api_key,
             "--anthropic-key", anthropic_key,
         ],
     }

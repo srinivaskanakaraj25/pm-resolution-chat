@@ -41,6 +41,7 @@ class AgentClient:
         self,
         db_conn: Optional[psycopg2.extensions.connection] = None,
         resume_session_id: Optional[str] = None,
+        rocketlane_api_key: Optional[str] = None,
     ):
         self.state = AgentState()
         self.prompts = self._load_prompts()
@@ -57,20 +58,15 @@ class AgentClient:
             ],
         }
 
-        def _stderr_callback(line: str) -> None:
-            with open("/tmp/claude_debug.log", "a") as f:
-                f.write(line + "\n")
-
         from tools import start_proxy
         mcp_servers = {}
-        if os.environ.get("ROCKETLANE_API_KEY"):
-            mcp_servers["rocketlane-proxy"] = start_proxy()
+        if rocketlane_api_key:
+            mcp_servers["rocketlane-proxy"] = start_proxy(rocketlane_api_key)
 
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
             hooks=hooks,
             resume=resume_session_id,
-            stderr=_stderr_callback,
             cwd=os.path.dirname(os.path.abspath(__file__)),
             setting_sources=["project"],
             mcp_servers=mcp_servers or None,
