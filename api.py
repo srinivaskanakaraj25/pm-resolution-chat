@@ -98,7 +98,11 @@ async def rl_test(_: str = Security(verify_api_key)):
     # Init session
     r1 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}},"id":1}, timeout=15)
     session_id = r1.headers.get("mcp-session-id")
+    if not session_id:
+        return {"error": "No mcp-session-id in initialize response", "body": r1.text[:500]}
     headers["mcp-session-id"] = session_id
+    # Send notifications/initialized to complete handshake
+    r_notify = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"notifications/initialized"}, timeout=15)
     # Call tool
     r2 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_all_projects","arguments":{}},"id":2}, timeout=30)
     return {"status": r2.status_code, "body": r2.text[:500]}

@@ -8,7 +8,6 @@ from pathlib import Path
 ROCKETLANE_MCP_URL = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
 
 _TOOL_INDEX: list[dict] = []
-_SESSION_ID: str | None = None
 
 
 def _mcp_headers(api_key: str, session_id: str | None = None) -> dict:
@@ -26,7 +25,10 @@ def _parse_sse(text: str) -> dict:
     for line in text.splitlines():
         if line.startswith("data:"):
             return json.loads(line[5:])
-    return json.loads(text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        raise ValueError(f"Response is neither SSE nor valid JSON: {text[:500]}")
 
 
 def _mcp_init(api_key: str) -> str:
@@ -47,16 +49,26 @@ def _mcp_init(api_key: str) -> str:
         timeout=30,
     )
     resp.raise_for_status()
-    return resp.headers["mcp-session-id"]
+    session_id = resp.headers.get("mcp-session-id")
+    if not session_id:
+        raise ValueError("MCP server did not return mcp-session-id header")
+    # Send required notifications/initialized to complete the handshake
+    notify_resp = httpx.post(
+        ROCKETLANE_MCP_URL,
+        headers=_mcp_headers(api_key, session_id),
+        json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+        timeout=15,
+    )
+    notify_resp.raise_for_status()
+    return session_id
 
 
 def _fetch_tool_index_sync() -> list[dict]:
-    global _SESSION_ID
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    _SESSION_ID = _mcp_init(api_key)
+    session_id = _mcp_init(api_key)
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
-        headers=_mcp_headers(api_key, _SESSION_ID),
+        headers=_mcp_headers(api_key, session_id),
         json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2},
         timeout=30,
     )
@@ -70,18 +82,22 @@ def _call_tool_sync(name: str, params: dict) -> str:
         return json.dumps({"error": f"Unknown tool: {name}"})
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
     session_id = _mcp_init(api_key)
-    resp = httpx.post(
-        ROCKETLANE_MCP_URL,
-        headers=_mcp_headers(api_key, session_id),
-        json={
-            "jsonrpc": "2.0",
-            "method": "tools/call",
-            "params": {"name": name, "arguments": params},
-            "id": 2,
-        },
-        timeout=60,
-    )
-    resp.raise_for_status()
+    try:
+        resp = httpx.post(
+            ROCKETLANE_MCP_URL,
+            headers=_mcp_headers(api_key, session_id),
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "params": {"name": name, "arguments": params},
+                "id": 2,
+            },
+            timeout=60,
+        )
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        print(f"tools/call HTTP {e.response.status_code}: {e.response.text}", file=sys.stderr, flush=True)
+        raise
     return json.dumps(_parse_sse(resp.text).get("result", {}))
 
 
