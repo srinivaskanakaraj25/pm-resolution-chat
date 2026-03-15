@@ -8,6 +8,7 @@ from pathlib import Path
 ROCKETLANE_MCP_URL = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
 
 _TOOL_INDEX: list[dict] = []
+_MCP_SESSION_ID: str | None = None  # reused across all tool calls in this process
 
 
 def _mcp_headers(api_key: str, session_id: str | None = None) -> dict:
@@ -63,9 +64,18 @@ def _mcp_init(api_key: str) -> str:
     return session_id
 
 
+def _get_or_create_session(api_key: str) -> str:
+    """Return the cached MCP session, creating one if needed."""
+    global _MCP_SESSION_ID
+    if _MCP_SESSION_ID is None:
+        _MCP_SESSION_ID = _mcp_init(api_key)
+        print(f"MCP session created: {_MCP_SESSION_ID}", file=sys.stderr, flush=True)
+    return _MCP_SESSION_ID
+
+
 def _fetch_tool_index_sync() -> list[dict]:
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    session_id = _mcp_init(api_key)
+    session_id = _get_or_create_session(api_key)
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
         headers=_mcp_headers(api_key, session_id),
@@ -81,7 +91,7 @@ def _call_tool_sync(name: str, params: dict) -> str:
     if name not in valid_names:
         return json.dumps({"error": f"Unknown tool: {name}"})
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    session_id = _mcp_init(api_key)
+    session_id = _get_or_create_session(api_key)
     try:
         resp = httpx.post(
             ROCKETLANE_MCP_URL,
@@ -92,11 +102,14 @@ def _call_tool_sync(name: str, params: dict) -> str:
                 "params": {"name": name, "arguments": params},
                 "id": 2,
             },
-            timeout=60,
+            timeout=120,
         )
         resp.raise_for_status()
     except httpx.HTTPStatusError as e:
         print(f"tools/call HTTP {e.response.status_code}: {e.response.text}", file=sys.stderr, flush=True)
+        # Session may have expired — reset so next call creates a fresh one
+        global _MCP_SESSION_ID
+        _MCP_SESSION_ID = None
         raise
     return json.dumps(_parse_sse(resp.text).get("result", {}))
 
