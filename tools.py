@@ -8,6 +8,7 @@ from pathlib import Path
 ROCKETLANE_MCP_URL = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
 
 _TOOL_INDEX: list[dict] = []
+_SESSION_ID: str | None = None
 
 
 def _mcp_headers(api_key: str, session_id: str | None = None) -> dict:
@@ -50,11 +51,12 @@ def _mcp_init(api_key: str) -> str:
 
 
 def _fetch_tool_index_sync() -> list[dict]:
+    global _SESSION_ID
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    session_id = _mcp_init(api_key)
+    _SESSION_ID = _mcp_init(api_key)
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
-        headers=_mcp_headers(api_key, session_id),
+        headers=_mcp_headers(api_key, _SESSION_ID),
         json={"jsonrpc": "2.0", "method": "tools/list", "params": {}, "id": 2},
         timeout=30,
     )
@@ -67,7 +69,7 @@ def _call_tool_sync(name: str, params: dict) -> str:
     if name not in valid_names:
         return json.dumps({"error": f"Unknown tool: {name}"})
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    session_id = _mcp_init(api_key)
+    session_id = _SESSION_ID or _mcp_init(api_key)
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
         headers=_mcp_headers(api_key, session_id),
