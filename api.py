@@ -90,7 +90,7 @@ async def debug_env(_: str = Security(verify_api_key)):
 
 
 @app.get("/debug/rl-test")
-async def rl_test(_: str = Security(verify_api_key)):
+async def rl_test(_: str = Security(verify_api_key), tool: str = "get_all_projects", method: str = "tools/call"):
     import httpx
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
     url = "https://rocket-mcp.rl-platforms.rocketlane.com/mcp"
@@ -103,9 +103,13 @@ async def rl_test(_: str = Security(verify_api_key)):
     headers["mcp-session-id"] = session_id
     # Send notifications/initialized to complete handshake
     r_notify = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"notifications/initialized"}, timeout=15)
-    # Call tool
-    r2 = httpx.post(url, headers=headers, json={"jsonrpc":"2.0","method":"tools/call","params":{"name":"get_all_projects","arguments":{}},"id":2}, timeout=30)
-    return {"status": r2.status_code, "body": r2.text[:500]}
+    # Call method (tools/list or tools/call)
+    if method == "tools/list":
+        payload = {"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}
+    else:
+        payload = {"jsonrpc":"2.0","method":"tools/call","params":{"name":tool,"arguments":{}},"id":2}
+    r2 = httpx.post(url, headers=headers, json=payload, timeout=30)
+    return {"status": r2.status_code, "body": r2.text[:1000]}
 
 
 @app.post("/conversations/{id}/exit-resolution")
