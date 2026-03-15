@@ -24,12 +24,13 @@ def verify_api_key(api_key: str = Security(api_key_header)):
 class MessageRequest(BaseModel):
     message: str
     rocketlane_api_key: str | None = None
+    project_id: int | None = None
 
 
 @app.post("/conversations")
 async def start_conversation(body: MessageRequest, _: str = Security(verify_api_key)):
     """Start a new conversation."""
-    agent = AgentClient(db_conn=db_conn, rocketlane_api_key=body.rocketlane_api_key)
+    agent = AgentClient(db_conn=db_conn, rocketlane_api_key=body.rocketlane_api_key, project_id=body.project_id)
     await agent.connect()
     try:
         response = await agent.send(body.message)
@@ -45,7 +46,12 @@ async def send_message(id: str, body: MessageRequest, _: str = Security(verify_a
     if not conv:
         raise HTTPException(status_code=404, detail="Conversation not found")
 
-    agent = AgentClient(db_conn=db_conn, resume_session_id=conv["session_id"], rocketlane_api_key=body.rocketlane_api_key)
+    agent = AgentClient(
+        db_conn=db_conn,
+        resume_session_id=conv["session_id"],
+        rocketlane_api_key=body.rocketlane_api_key,
+        project_id=body.project_id or conv.get("project_id"),
+    )
     agent.restore_state(conv["mode"], conv["failure_context"])
     await agent.connect()
     try:

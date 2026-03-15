@@ -34,12 +34,13 @@ def db_conn():
         cur.execute(f'SET search_path = "{schema}"')
         cur.execute("""
             CREATE TABLE conversations (
-                session_id VARCHAR PRIMARY KEY,
-                title      VARCHAR,
-                mode       VARCHAR DEFAULT 'normal',
+                session_id      VARCHAR PRIMARY KEY,
+                title           VARCHAR,
+                mode            VARCHAR DEFAULT 'normal',
                 failure_context TEXT,
-                created_at VARCHAR,
-                updated_at VARCHAR
+                project_id      INTEGER,
+                created_at      VARCHAR,
+                updated_at      VARCHAR
             )
         """)
     conn.commit()

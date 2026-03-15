@@ -72,7 +72,7 @@ async def test_create_conversation_called_once_on_first_turn(mocker):
 
     await agent.user_prompt_submit({"session_id": "sess-123", "prompt": "First message"}, None, None)
 
-    mock_create.assert_called_once_with(mock_db, "sess-123", "First message")
+    mock_create.assert_called_once_with(mock_db, "sess-123", "First message", project_id=None)
 
 
 async def test_create_conversation_not_called_on_subsequent_turns(mocker):
@@ -162,3 +162,55 @@ async def test_normal_mode_no_change_returns_empty():
     result = await agent.user_prompt_submit({}, None, None)
 
     assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# user_prompt_submit — project_id context injection
+# ---------------------------------------------------------------------------
+
+async def test_project_id_injected_in_normal_mode():
+    agent = _agent(project_id=42)
+    agent._title_saved = True
+    agent.state.mode = "normal"
+    agent.state.mode_changed = False
+
+    result = await agent.user_prompt_submit({}, None, None)
+
+    ctx = result["hookSpecificOutput"]["additionalContext"]
+    assert "42" in ctx
+
+
+async def test_project_id_combined_with_mode_prompt():
+    agent = _agent(project_id=99)
+    agent._title_saved = True
+    agent.state.mode = "resolution"
+    agent.state.mode_changed = True
+
+    result = await agent.user_prompt_submit({}, None, None)
+
+    ctx = result["hookSpecificOutput"]["additionalContext"]
+    # Must contain both the resolution entry prompt and the project context
+    assert agent.prompts["entry"] in ctx
+    assert "99" in ctx
+
+
+async def test_no_project_id_does_not_inject_context():
+    agent = _agent()  # no project_id
+    agent._title_saved = True
+    agent.state.mode = "normal"
+    agent.state.mode_changed = False
+
+    result = await agent.user_prompt_submit({}, None, None)
+
+    assert result == {}
+
+
+async def test_project_id_stored_in_db_on_first_turn(mocker):
+    mock_create = mocker.patch("agent_client.create_conversation")
+    mock_db = MagicMock()
+    agent = _agent(db_conn=mock_db, project_id=7)
+
+    await agent.user_prompt_submit({"session_id": "sess-p7", "prompt": "Hello"}, None, None)
+
+    _, kwargs = mock_create.call_args
+    assert kwargs.get("project_id") == 7

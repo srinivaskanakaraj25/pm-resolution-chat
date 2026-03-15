@@ -9,6 +9,11 @@ def init_db() -> psycopg2.extensions.connection:
     """Open connection to Postgres database using DATABASE_URL env var."""
     conn = psycopg2.connect(os.environ["DATABASE_URL"])
     conn.autocommit = False
+    with conn.cursor() as cur:
+        cur.execute(
+            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER"
+        )
+    conn.commit()
     return conn
 
 
@@ -18,17 +23,18 @@ def create_conversation(
     title: str,
     mode: str = "normal",
     failure_context: Optional[str] = None,
+    project_id: Optional[int] = None,
 ) -> None:
     """Create a new conversation record. Uses INSERT OR IGNORE to be idempotent."""
     now = datetime.now(timezone.utc).isoformat()
     with conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO conversations (session_id, title, mode, failure_context, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            INSERT INTO conversations (session_id, title, mode, failure_context, project_id, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (session_id) DO NOTHING
             """,
-            (session_id, title, mode, failure_context, now, now),
+            (session_id, title, mode, failure_context, project_id, now, now),
         )
     conn.commit()
 
@@ -79,7 +85,7 @@ def get_conversation(
     except ValueError:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute(
-                "SELECT session_id, title, mode, failure_context, created_at, updated_at FROM conversations WHERE session_id = %s",
+                "SELECT session_id, title, mode, failure_context, project_id, created_at, updated_at FROM conversations WHERE session_id = %s",
                 (identifier,),
             )
             row = cur.fetchone()

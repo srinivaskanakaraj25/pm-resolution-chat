@@ -42,11 +42,13 @@ class AgentClient:
         db_conn: Optional[psycopg2.extensions.connection] = None,
         resume_session_id: Optional[str] = None,
         rocketlane_api_key: Optional[str] = None,
+        project_id: Optional[int] = None,
     ):
         self.state = AgentState()
         self.prompts = self._load_prompts()
         self.db_conn = db_conn
         self.session_id = resume_session_id
+        self.project_id = project_id
         self._title_saved = resume_session_id is not None
 
         hooks = {
@@ -142,32 +144,33 @@ class AgentClient:
 
         if not self._title_saved and self.db_conn is not None:
             title = (input_data.get("prompt", "") or "")[:50].strip() or "(no title)"
-            create_conversation(self.db_conn, self.session_id, title)
+            create_conversation(self.db_conn, self.session_id, title, project_id=self.project_id)
             self._title_saved = True
 
+        # Determine mode-based prompt injection
+        mode_prompt = None
         if self.state.mode == "resolution" and self.state.mode_changed:
             self.state.clear_transition_flag()
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": self.prompts["entry"],
-                }
-            }
-
-        if self.state.mode == "normal" and self.state.mode_changed:
+            mode_prompt = self.prompts["entry"]
+        elif self.state.mode == "normal" and self.state.mode_changed:
             self.state.clear_transition_flag()
-            return {
-                "hookSpecificOutput": {
-                    "hookEventName": "UserPromptSubmit",
-                    "additionalContext": self.prompts["exit"],
-                }
-            }
+            mode_prompt = self.prompts["exit"]
+        elif self.state.mode == "resolution":
+            mode_prompt = self.prompts["steady"]
 
-        if self.state.mode == "resolution":
+        # Append project scope when a project_id is active
+        project_ctx = (
+            f"\n\n[Active project: {self.project_id}. "
+            f"Scope all Rocketlane queries and actions to this project unless the user explicitly asks otherwise.]"
+            if self.project_id else ""
+        )
+
+        additional = (mode_prompt or "") + project_ctx
+        if additional:
             return {
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
-                    "additionalContext": self.prompts["steady"],
+                    "additionalContext": additional,
                 }
             }
 
