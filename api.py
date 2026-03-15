@@ -6,6 +6,7 @@ load_dotenv()
 from fastapi import FastAPI, HTTPException, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
+from pathlib import Path
 from pydantic import BaseModel
 from db import init_db, list_conversations, get_conversation, update_conversation
 from agent_client import AgentClient
@@ -71,11 +72,55 @@ async def send_message(id: str, body: MessageRequest, _: str = Security(verify_a
         await agent.disconnect()
 
 
+def _read_session_messages(session_id: str) -> list[dict]:
+    """Read message history from the Claude SDK JSONL file on the volume."""
+    import json as _json
+    claude_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR", "/root/.claude"))
+    cwd = os.path.dirname(os.path.abspath(__file__))
+    project_hash = cwd.replace("/", "-")
+    session_file = claude_dir / "projects" / project_hash / f"{session_id}.jsonl"
+    if not session_file.exists():
+        return []
+    messages = []
+    for line in session_file.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = _json.loads(line)
+            role = entry.get("role")
+            if role not in ("user", "assistant"):
+                continue
+            content = entry.get("message", {}).get("content") or entry.get("content", "")
+            if isinstance(content, list):
+                text = " ".join(
+                    b.get("text", "") for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            else:
+                text = str(content)
+            if text.strip():
+                messages.append({"role": role, "text": text.strip()})
+        except Exception:
+            continue
+    return messages
+
+
 @app.get("/conversations")
 async def list_all(_: str = Security(verify_api_key)):
     """List all conversations."""
     return list_conversations(db_conn)
 
+
+
+@app.get("/conversations/{id}")
+async def get_conversation_detail(id: str, _: str = Security(verify_api_key)):
+    """Get a conversation with its full message history."""
+    conv = get_conversation(db_conn, id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    messages = _read_session_messages(conv["session_id"])
+    return {**conv, "messages": messages}
 
 
 @app.post("/conversations/{id}/exit-resolution")

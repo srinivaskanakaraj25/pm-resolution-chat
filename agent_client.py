@@ -6,6 +6,7 @@ from claude_agent_sdk import (
     TextBlock,
 )
 import os
+import sys
 import json
 import psycopg2
 from typing import Optional
@@ -76,6 +77,7 @@ class AgentClient:
                 "mcp__rocketlane-proxy__search_rocketlane_tools",
                 "mcp__rocketlane-proxy__call_rocketlane_tool",
             ],
+            stderr=lambda line: print(f"[claude stderr] {line}", file=sys.stderr, flush=True),
         )
 
         self.client = ClaudeSDKClient(options=options)

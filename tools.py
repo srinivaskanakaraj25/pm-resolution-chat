@@ -172,6 +172,41 @@ def _search_tools_sync(query: str, top_n: int = 8) -> list[dict]:
     ]
 
 
+_MAX_LIST_ITEMS = 20
+_MAX_STR_LEN = 500
+_MAX_RESULT_BYTES = 50_000  # 50KB hard cap after compaction
+
+
+def _truncate_value(val, depth=0):
+    if depth > 5:
+        return "..."
+    if isinstance(val, list):
+        truncated = [_truncate_value(v, depth + 1) for v in val[:_MAX_LIST_ITEMS]]
+        if len(val) > _MAX_LIST_ITEMS:
+            truncated.append({"_note": f"...{len(val) - _MAX_LIST_ITEMS} more items omitted"})
+        return truncated
+    if isinstance(val, dict):
+        return {k: _truncate_value(v, depth + 1) for k, v in val.items()}
+    if isinstance(val, str) and len(val) > _MAX_STR_LEN:
+        return val[:_MAX_STR_LEN] + "...[truncated]"
+    return val
+
+
+def _compact_tool_result(raw: str) -> str:
+    """Return a compact JSON-serializable version of a tool result."""
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return raw[:_MAX_RESULT_BYTES]
+
+    data = _truncate_value(data)
+    compacted = json.dumps(data)
+
+    if len(compacted.encode()) > _MAX_RESULT_BYTES:
+        compacted = compacted[:_MAX_RESULT_BYTES] + '"}'
+    return compacted
+
+
 def _run_proxy_server():
     from mcp.server.fastmcp import FastMCP
 
@@ -204,10 +239,7 @@ def _run_proxy_server():
             parsed = {}
         try:
             result = _call_tool_sync(name, parsed)
-            # Agent SDK stdio buffer is 1MB — truncate large responses to stay safe
-            if len(result.encode()) > 900_000:
-                result = result[:900_000] + "... [truncated: response exceeded 900KB]"
-            return result
+            return _compact_tool_result(result)
         except Exception as e:
             return json.dumps({"error": str(e)})
 
