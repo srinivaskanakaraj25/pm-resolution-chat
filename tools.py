@@ -151,17 +151,25 @@ def _run_proxy_server():
 
 def start_proxy() -> dict:
     """Returns McpStdioServerConfig for the Claude Agent SDK."""
+    rocketlane_key = os.environ.get("ROCKETLANE_API_KEY", "")
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     return {
         "command": sys.executable,
-        "args": [str(Path(__file__).resolve()), "--proxy"],
-        "env": {
-            "ROCKETLANE_API_KEY": os.environ.get("ROCKETLANE_API_KEY", ""),
-            "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
-            "PATH": os.environ.get("PATH", ""),
-        },
+        "args": [
+            str(Path(__file__).resolve()),
+            "--proxy",
+            "--rocketlane-key", rocketlane_key,
+            "--anthropic-key", anthropic_key,
+        ],
     }
 
 
 if __name__ == "__main__":
     if "--proxy" in sys.argv:
+        idx = sys.argv.index("--rocketlane-key") if "--rocketlane-key" in sys.argv else -1
+        if idx != -1:
+            os.environ["ROCKETLANE_API_KEY"] = sys.argv[idx + 1]
+        idx = sys.argv.index("--anthropic-key") if "--anthropic-key" in sys.argv else -1
+        if idx != -1:
+            os.environ["ANTHROPIC_API_KEY"] = sys.argv[idx + 1]
         _run_proxy_server()
