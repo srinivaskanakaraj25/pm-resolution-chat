@@ -69,7 +69,7 @@ def _call_tool_sync(name: str, params: dict) -> str:
     if name not in valid_names:
         return json.dumps({"error": f"Unknown tool: {name}"})
     api_key = os.environ.get("ROCKETLANE_API_KEY", "")
-    session_id = _SESSION_ID or _mcp_init(api_key)
+    session_id = _mcp_init(api_key)
     resp = httpx.post(
         ROCKETLANE_MCP_URL,
         headers=_mcp_headers(api_key, session_id),
