@@ -6,6 +6,7 @@ so production data in the default schema is never touched.
 """
 import os
 import time
+import uuid
 import pytest
 import psycopg2
 import psycopg2.extras
@@ -27,8 +28,8 @@ def db_conn():
     conn = psycopg2.connect(url)
     conn.autocommit = False
 
-    # Create an isolated schema per test so the real conversations table is never touched.
-    schema = f"test_{int(time.time() * 1000)}"
+    # Create an isolated schema per test — UUID avoids collisions when tests run in parallel.
+    schema = f"t_{uuid.uuid4().hex}"
     with conn.cursor() as cur:
         cur.execute(f'CREATE SCHEMA "{schema}"')
         cur.execute(f'SET search_path = "{schema}"')

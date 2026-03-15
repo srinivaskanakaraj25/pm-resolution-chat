@@ -4,12 +4,22 @@ os.environ["PATH"] = f"/root/.npm-global/bin:/usr/local/bin:{os.environ.get('PAT
 from dotenv import load_dotenv
 load_dotenv()
 from fastapi import FastAPI, HTTPException, Security
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel
 from db import init_db, list_conversations, get_conversation, update_conversation
 from agent_client import AgentClient
 
 app = FastAPI(title="PM Resolution Chat")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://*.vercel.app", "https://*.railway.app"],
+    allow_origin_regex=r"https://.*\.(vercel\.app|railway\.app)",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 db_conn = init_db()
 

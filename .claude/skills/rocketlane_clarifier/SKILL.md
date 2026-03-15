@@ -6,6 +6,28 @@ description: description: Framework for mapping user queries to Rocketlane's dat
 
 # Rocketlane Clarifier
 
+## Rocketlane Platform Identity
+
+Rocketlane is a **PSA and client onboarding platform** for teams delivering work to external
+paying clients. This is not a generic project management tool.
+
+**Organizational model:**
+- **Organization** = your company (the one using Rocketlane)
+- **Account** = an external customer company (paying client)
+- **Project** = a delivery engagement for one Account; always has a billing type, owner, and portal
+- Deal-to-delivery pipeline: CRM deal → Intake Form → Project (from template)
+
+**User types:**
+- **Native**: internal team. Full access. Tracked for utilization, timesheets, effort.
+- **Partner**: external collaborator. Same tracking as Native. Scoped access.
+- **Customer**: client contact. Portal-only. NO utilization, effort, or timesheet data.
+
+**Implication for every clarification:** Effort, capacity, utilization, and allocated hours
+apply only to Native and Partner users — never Customer users. If the user's question involves
+Customer users and effort/capacity metrics, surface this constraint proactively.
+
+---
+
 ## Purpose
 
 This skill translates vague user requests into structured, actionable plans by mapping natural language to Rocketlane's data architecture and guiding clarification conversations when needed.
