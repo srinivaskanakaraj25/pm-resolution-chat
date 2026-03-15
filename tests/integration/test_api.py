@@ -15,6 +15,8 @@ os.environ["API_KEY"] = "test-api-key"
 # Force a fresh import so module-level code (init_db()) runs under our patch
 sys.modules.pop("api", None)
 _mock_db = MagicMock()
+# get_conn calls pool.getconn()/putconn(); make getconn return the same mock
+_mock_db.getconn.return_value = _mock_db
 _init_db_patcher = patch("db.init_db", return_value=_mock_db)
 _init_db_patcher.start()
 import api  # noqa: E402 — must come after patch
@@ -60,6 +62,7 @@ def test_start_conversation_returns_session_id_and_response(mock_agent, mocker):
     data = r.json()
     assert data["session_id"] == "test-session-id"
     assert data["response"] == "Test response"
+    assert "tool_data" in data
 
 
 def test_start_conversation_with_rocketlane_key_passes_key_to_agent(mock_agent, mocker):

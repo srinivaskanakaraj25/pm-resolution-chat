@@ -1,20 +1,40 @@
 import os
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
 
-def init_db() -> psycopg2.extensions.connection:
-    """Open connection to Postgres database using DATABASE_URL env var."""
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
-    conn.autocommit = False
-    with conn.cursor() as cur:
-        cur.execute(
-            "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER"
-        )
-    conn.commit()
-    return conn
+def init_db() -> psycopg2.pool.ThreadedConnectionPool:
+    """Create a connection pool and run schema migrations."""
+    pool = psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=int(os.environ.get("DB_POOL_MAX", "10")),
+        dsn=os.environ["DATABASE_URL"],
+    )
+    conn = pool.getconn()
+    try:
+        conn.autocommit = False
+        with conn.cursor() as cur:
+            cur.execute(
+                "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER"
+            )
+        conn.commit()
+    finally:
+        pool.putconn(conn)
+    return pool
+
+
+@contextmanager
+def get_conn(pool: psycopg2.pool.ThreadedConnectionPool):
+    """Checkout a connection from the pool, yield it, then return it."""
+    conn = pool.getconn()
+    try:
+        yield conn
+    finally:
+        pool.putconn(conn)
 
 
 def create_conversation(

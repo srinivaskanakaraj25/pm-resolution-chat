@@ -142,9 +142,9 @@ def test_call_tool_422_raises_http_error(monkeypatch):
 
 def test_search_tools_returns_matching_dicts(monkeypatch, mocker):
     monkeypatch.setattr(tools, "_TOOL_INDEX", [
-        {"name": "tool_a", "description": "alpha"},
+        {"name": "tool_a", "description": "alpha", "inputSchema": {"type": "object"}},
         {"name": "tool_b", "description": "beta"},
-        {"name": "tool_c", "description": "gamma"},
+        {"name": "tool_c", "description": "gamma", "inputSchema": {"type": "object"}},
     ])
 
     mock_msg = MagicMock()
@@ -160,6 +160,8 @@ def test_search_tools_returns_matching_dicts(monkeypatch, mocker):
     assert len(result) == 2
     assert result[0]["name"] == "tool_a"
     assert result[1]["name"] == "tool_c"
+    assert "inputSchema" in result[0]
+    assert "inputSchema" in result[1]
 
 
 def test_search_tools_filters_out_unknown_names(monkeypatch, mocker):
@@ -181,7 +183,7 @@ def test_search_tools_filters_out_unknown_names(monkeypatch, mocker):
     assert result[0]["name"] == "tool_a"
 
 
-def test_search_tools_malformed_json_raises(monkeypatch, mocker):
+def test_search_tools_malformed_json_returns_fallback(monkeypatch, mocker):
     monkeypatch.setattr(tools, "_TOOL_INDEX", [{"name": "tool_a", "description": "alpha"}])
 
     mock_msg = MagicMock()
@@ -192,5 +194,6 @@ def test_search_tools_malformed_json_raises(monkeypatch, mocker):
     mock_client.messages.create.return_value = mock_msg
     mocker.patch("tools.anthropic.Anthropic", return_value=mock_client)
 
-    with pytest.raises(json.JSONDecodeError):
-        _search_tools_sync("query")
+    result = _search_tools_sync("query")
+    assert len(result) == 1
+    assert result[0]["name"] == "tool_a"

@@ -20,6 +20,10 @@ If you are unsure which tool to use, call `search_rocketlane_tools` first, then 
 Always search before calling if you are not 100% certain of the tool name. Re-search if a
 call returns an error — do not retry the same call blindly.
 
+3. **Always filter**: When search results include an `inputSchema`, use the available
+   filters — especially `project_id`, `status`, and `assignee`. Never call a list/get
+   endpoint without at least one filter. If no filters are known, ask the user first.
+
 ## Rocketlane Platform Identity
 
 **Organizational model:**

@@ -50,6 +50,19 @@ async def test_missing_status_does_not_trigger_resolution():
     assert agent.state.mode == "normal"
 
 
+async def test_422_in_string_input_data_triggers_resolution():
+    agent = _agent()
+    await agent.post_tool_use_failure("HTTP 422: Unprocessable Entity", None, None)
+    assert agent.state.mode == "resolution"
+    assert agent.state.failure_context["tool_error"]["error_text"] == "HTTP 422: Unprocessable Entity"
+
+
+async def test_non_422_string_does_not_trigger_resolution():
+    agent = _agent()
+    await agent.post_tool_use_failure("HTTP 500: Internal Server Error", None, None)
+    assert agent.state.mode == "normal"
+
+
 # ---------------------------------------------------------------------------
 # user_prompt_submit — session_id capture
 # ---------------------------------------------------------------------------

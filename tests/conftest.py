@@ -35,6 +35,7 @@ def mock_agent():
     agent.disconnect = AsyncMock()
     agent.send = AsyncMock(return_value="Test response")
     agent.session_id = "test-session-id"
+    agent.request_id = "test1234"
     agent.state = MagicMock()
     agent.state.mode = "normal"
     agent.restore_state = MagicMock()

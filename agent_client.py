@@ -5,11 +5,16 @@ from claude_agent_sdk import (
     AssistantMessage,
     TextBlock,
 )
+import asyncio
 import os
 import sys
 import json
+import logging
+import uuid
 import psycopg2
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 from db import create_conversation, update_conversation
 
 
@@ -50,6 +55,7 @@ class AgentClient:
         self.db_conn = db_conn
         self.session_id = resume_session_id
         self.project_id = project_id
+        self.request_id = uuid.uuid4().hex[:8]
         self._title_saved = resume_session_id is not None
 
         hooks = {
@@ -64,8 +70,9 @@ class AgentClient:
         from tools import start_proxy
         mcp_servers = {}
         if rocketlane_api_key:
-            mcp_servers["rocketlane-proxy"] = start_proxy(rocketlane_api_key)
+            mcp_servers["rocketlane-proxy"] = start_proxy(rocketlane_api_key, self.request_id)
 
+        claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
             hooks=hooks,
@@ -77,7 +84,8 @@ class AgentClient:
                 "mcp__rocketlane-proxy__search_rocketlane_tools",
                 "mcp__rocketlane-proxy__call_rocketlane_tool",
             ],
-            stderr=lambda line: print(f"[claude stderr] {line}", file=sys.stderr, flush=True),
+            stderr=lambda line: logger.debug("[claude stderr] %s", line),
+            env={"CLAUDE_CONFIG_DIR": claude_config_dir},
         )
 
         self.client = ClaudeSDKClient(options=options)
@@ -88,8 +96,21 @@ class AgentClient:
     async def disconnect(self):
         await self.client.disconnect()
 
+    _SEND_TIMEOUT = float(os.environ.get("AGENT_SEND_TIMEOUT", "300"))
+
     async def send(self, text: str) -> str:
-        """Send text and return Claude's response."""
+        """Send text and return Claude's response, with timeout."""
+        try:
+            return await asyncio.wait_for(
+                self._send_inner(text), timeout=self._SEND_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            logger.warning("send() timed out after %ss", self._SEND_TIMEOUT)
+            self._persist_state()
+            return "[Response timed out. Please try again or simplify your request.]"
+
+    async def _send_inner(self, text: str) -> str:
+        """Core send logic — query + collect response + persist state."""
         await self.client.query(text)
         response_parts = []
         async for msg in self.client.receive_response():
@@ -98,7 +119,14 @@ class AgentClient:
                     if isinstance(block, TextBlock):
                         response_parts.append(block.text)
 
-        # Persist state after each turn
+        self._persist_state()
+
+        response = "".join(response_parts)
+        logger.debug("Agent response: %.200s", response)
+        return response
+
+    def _persist_state(self):
+        """Save current mode and failure context to DB."""
         if self.db_conn is not None and self.session_id is not None:
             fc = (
                 json.dumps(self.state.failure_context)
@@ -106,10 +134,6 @@ class AgentClient:
                 else None
             )
             update_conversation(self.db_conn, self.session_id, self.state.mode, fc)
-
-        response = "".join(response_parts)
-        print(f"Claude: {response}")
-        return response
 
     def exit_resolution_mode(self):
         self.state.exit_resolution()
@@ -135,9 +159,12 @@ class AgentClient:
         }
 
     async def post_tool_use_failure(self, input_data, tool_use_id, context):
-        status = input_data.get("status_code") or input_data.get("status")
-        if status == 422:
-            self.state.enter_resolution({"tool_error": input_data})
+        status = None
+        if isinstance(input_data, dict):
+            status = input_data.get("status_code") or input_data.get("status")
+        if status == 422 or "422" in str(input_data):
+            ctx = input_data if isinstance(input_data, dict) else {"error_text": str(input_data)}
+            self.state.enter_resolution({"tool_error": ctx})
         return {}
 
     async def user_prompt_submit(self, input_data, tool_use_id, context):
