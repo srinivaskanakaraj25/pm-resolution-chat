@@ -203,7 +203,11 @@ def _run_proxy_server():
         except json.JSONDecodeError:
             parsed = {}
         try:
-            return _call_tool_sync(name, parsed)
+            result = _call_tool_sync(name, parsed)
+            # Agent SDK stdio buffer is 1MB — truncate large responses to stay safe
+            if len(result.encode()) > 900_000:
+                result = result[:900_000] + "... [truncated: response exceeded 900KB]"
+            return result
         except Exception as e:
             return json.dumps({"error": str(e)})
 
