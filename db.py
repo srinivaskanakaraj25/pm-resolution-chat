@@ -9,15 +9,32 @@ from typing import Optional
 
 def init_db() -> psycopg2.pool.ThreadedConnectionPool:
     """Create a connection pool and run schema migrations."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL is required")
+
     pool = psycopg2.pool.ThreadedConnectionPool(
         minconn=1,
         maxconn=int(os.environ.get("DB_POOL_MAX", "10")),
-        dsn=os.environ["DATABASE_URL"],
+        dsn=database_url,
     )
     conn = pool.getconn()
     try:
         conn.autocommit = False
         with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS conversations (
+                    session_id VARCHAR PRIMARY KEY,
+                    title VARCHAR NOT NULL,
+                    mode VARCHAR NOT NULL DEFAULT 'normal',
+                    failure_context TEXT,
+                    project_id INTEGER,
+                    created_at VARCHAR NOT NULL,
+                    updated_at VARCHAR NOT NULL
+                )
+                """
+            )
             cur.execute(
                 "ALTER TABLE conversations ADD COLUMN IF NOT EXISTS project_id INTEGER"
             )
@@ -33,6 +50,9 @@ def get_conn(pool: psycopg2.pool.ThreadedConnectionPool):
     conn = pool.getconn()
     try:
         yield conn
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         pool.putconn(conn)
 

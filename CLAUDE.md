@@ -9,12 +9,13 @@ runtime behavior switching.
 - Runtime prompt injection via hooks
 - Resolution mode triggered by tool failures (422)
 - Resolution implemented as prompts, not a skill
-- Todo tracking encouraged during resolution
+- Claude Code built-in tools locked down by default
 
 ## Hooks
 
 ### PostToolUseFailure
 Detects tool failures and switches the agent into resolution mode.
+Current SDK payloads expose `error`, `tool_name`, and `tool_input`.
 
 ### UserPromptSubmit
 Injects prompts depending on the current mode:

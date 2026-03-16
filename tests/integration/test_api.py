@@ -29,6 +29,12 @@ HEADERS = {"X-API-Key": "test-api-key"}
 WRONG_HEADERS = {"X-API-Key": "wrong-key"}
 
 
+def test_healthcheck_is_public():
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+
+
 # ---------------------------------------------------------------------------
 # Auth
 # ---------------------------------------------------------------------------

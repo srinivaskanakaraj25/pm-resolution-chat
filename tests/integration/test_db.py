@@ -10,6 +10,7 @@ import uuid
 import pytest
 import psycopg2
 import psycopg2.extras
+from psycopg2 import OperationalError
 
 from db import (
     create_conversation,
@@ -25,7 +26,10 @@ def db_conn():
     if not url:
         pytest.skip("No DATABASE_URL set — skipping DB integration tests")
 
-    conn = psycopg2.connect(url)
+    try:
+        conn = psycopg2.connect(url)
+    except OperationalError as exc:
+        pytest.skip(f"Database is unavailable for integration tests: {exc}")
     conn.autocommit = False
 
     # Create an isolated schema per test — UUID avoids collisions when tests run in parallel.

@@ -7,7 +7,6 @@ from claude_agent_sdk import (
 )
 import asyncio
 import os
-import sys
 import json
 import logging
 import psycopg2
@@ -15,6 +14,28 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 from db import create_conversation, update_conversation
+
+_DISALLOWED_CLAUDE_CODE_TOOLS = [
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "LS",
+    "MultiEdit",
+    "NotebookEdit",
+    "NotebookRead",
+    "Read",
+    "Task",
+    "TodoWrite",
+    "WebFetch",
+    "WebSearch",
+    "Write",
+]
+
+
+def _parse_csv_env(name: str) -> list[str]:
+    value = os.environ.get(name, "")
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 class AgentState:
@@ -64,8 +85,11 @@ class AgentClient:
             ],
         }
 
-        self._claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
         self._cwd = os.path.dirname(os.path.abspath(__file__))
+        self._claude_config_dir = os.environ.get(
+            "CLAUDE_CONFIG_DIR",
+            os.path.join(self._cwd, ".claude-runtime"),
+        )
         self._hooks = hooks
         self._resume_session_id = resume_session_id
 
@@ -73,7 +97,14 @@ class AgentClient:
 
     def _build_client(self, resume: Optional[str] = None) -> ClaudeSDKClient:
         options = ClaudeAgentOptions(
-            system_prompt=self.prompts["system"],
+            system_prompt={
+                "type": "preset",
+                "preset": "claude_code",
+                "append": self.prompts["system"],
+            },
+            tools=[],
+            allowed_tools=_parse_csv_env("AGENT_ALLOWED_TOOLS"),
+            disallowed_tools=_DISALLOWED_CLAUDE_CODE_TOOLS,
             hooks=self._hooks,
             resume=resume,
             cwd=self._cwd,
@@ -162,12 +193,36 @@ class AgentClient:
         }
 
     async def post_tool_use_failure(self, input_data, tool_use_id, context):
+        error_text = ""
+        tool_error = {}
         status = None
         if isinstance(input_data, dict):
             status = input_data.get("status_code") or input_data.get("status")
-        if status == 422 or "422" in str(input_data):
-            ctx = input_data if isinstance(input_data, dict) else {"error_text": str(input_data)}
-            self.state.enter_resolution({"tool_error": ctx})
+            error_text = str(input_data.get("error", ""))
+            tool_error = {
+                **input_data,
+                "tool_name": input_data.get("tool_name"),
+                "tool_input": input_data.get("tool_input", {}),
+                "error": error_text,
+                "error_text": error_text,
+            }
+        else:
+            error_text = str(input_data)
+            tool_error = {"error": error_text, "error_text": error_text}
+
+        if status == 422 or "422" in error_text or "unprocessable" in error_text.lower():
+            self.state.enter_resolution({"tool_error": tool_error})
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PostToolUseFailure",
+                    "additionalContext": (
+                        "A tool call failed with a 422-style validation error. "
+                        "Stay in resolution mode and help the user identify the "
+                        "missing or invalid input before retrying."
+                    ),
+                }
+            }
+
         return {}
 
     async def user_prompt_submit(self, input_data, tool_use_id, context):

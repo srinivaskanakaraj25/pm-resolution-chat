@@ -22,7 +22,7 @@ async def test_422_via_status_code_key_triggers_resolution():
     input_data = {"status_code": 422, "detail": "unprocessable entity"}
     await agent.post_tool_use_failure(input_data, None, None)
     assert agent.state.mode == "resolution"
-    assert agent.state.failure_context == {"tool_error": input_data}
+    assert agent.state.failure_context["tool_error"]["status_code"] == 422
 
 
 async def test_422_via_status_key_triggers_resolution():
@@ -55,6 +55,19 @@ async def test_422_in_string_input_data_triggers_resolution():
     await agent.post_tool_use_failure("HTTP 422: Unprocessable Entity", None, None)
     assert agent.state.mode == "resolution"
     assert agent.state.failure_context["tool_error"]["error_text"] == "HTTP 422: Unprocessable Entity"
+
+
+async def test_current_sdk_failure_payload_triggers_resolution():
+    agent = _agent()
+    payload = {
+        "tool_name": "rocketlane.create_task",
+        "tool_input": {"title": ""},
+        "error": "422 Unprocessable Entity: title is required",
+    }
+    result = await agent.post_tool_use_failure(payload, None, None)
+    assert agent.state.mode == "resolution"
+    assert agent.state.failure_context["tool_error"]["tool_name"] == "rocketlane.create_task"
+    assert result["hookSpecificOutput"]["hookEventName"] == "PostToolUseFailure"
 
 
 async def test_non_422_string_does_not_trigger_resolution():
@@ -227,6 +240,17 @@ async def test_project_id_stored_in_db_on_first_turn(mocker):
 
     _, kwargs = mock_create.call_args
     assert kwargs.get("project_id") == 7
+
+
+def test_sdk_client_is_built_with_locked_down_tools(mock_sdk_client):
+    _agent()
+
+    options = mock_sdk_client.call_args.kwargs["options"]
+    assert options.tools == []
+    assert options.allowed_tools == []
+    assert "Read" in options.disallowed_tools
+    assert options.setting_sources == ["project"]
+    assert options.system_prompt["preset"] == "claude_code"
 
 
 # ---------------------------------------------------------------------------

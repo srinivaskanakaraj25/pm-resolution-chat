@@ -9,14 +9,17 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Mock claude_agent_sdk before any source module imports it.
-# This must happen at conftest load time (before test collection imports agent_client.py).
-if "claude_agent_sdk" not in sys.modules:
-    mock_sdk = MagicMock()
-    sys.modules["claude_agent_sdk"] = mock_sdk
+# Fall back to a mock SDK only when the real package isn't installed.
+try:
+    import claude_agent_sdk  # noqa: F401
+except ImportError:
+    if "claude_agent_sdk" not in sys.modules:
+        mock_sdk = MagicMock()
+        sys.modules["claude_agent_sdk"] = mock_sdk
 
 # Provide a default API_KEY so api.py and auth tests have something to work with
 os.environ.setdefault("API_KEY", "test-api-key")
+os.environ.setdefault("DATABASE_URL", "postgresql://test:test@localhost:5432/test")
 
 
 @pytest.fixture
