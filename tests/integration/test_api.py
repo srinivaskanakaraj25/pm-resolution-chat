@@ -5,7 +5,7 @@ The module-level patch of db.init_db prevents a real DB call when api.py is impo
 """
 import sys
 import os
-from unittest.mock import MagicMock, AsyncMock, patch, call
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
@@ -162,3 +162,54 @@ def test_exit_resolution_resets_mode_to_normal(mocker):
     assert r.status_code == 200
     assert r.json() == {"mode": "normal"}
     mock_update.assert_called_once_with(_mock_db, "sess-res", "normal", None)
+
+
+# ---------------------------------------------------------------------------
+# _read_session_messages
+# ---------------------------------------------------------------------------
+
+def test_read_session_messages_valid_jsonl(tmp_path, mocker):
+    session_file = tmp_path / "projects" / "-test" / "sess-1.jsonl"
+    session_file.parent.mkdir(parents=True)
+    session_file.write_text(
+        '{"role":"user","message":{"content":"Hello"}}\n'
+        '{"role":"assistant","message":{"content":[{"type":"text","text":"Hi"}]}}\n'
+    )
+    mocker.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path)})
+    mocker.patch("os.path.dirname", return_value="/test")
+    result = api._read_session_messages("sess-1")
+    assert len(result) == 2
+    assert result[0] == {"role": "user", "text": "Hello"}
+    assert result[1] == {"role": "assistant", "text": "Hi"}
+
+
+def test_read_session_messages_empty_file(tmp_path, mocker):
+    session_file = tmp_path / "projects" / "-test" / "sess-2.jsonl"
+    session_file.parent.mkdir(parents=True)
+    session_file.write_text("")
+    mocker.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path)})
+    mocker.patch("os.path.dirname", return_value="/test")
+    result = api._read_session_messages("sess-2")
+    assert result == []
+
+
+def test_read_session_messages_malformed_lines(tmp_path, mocker):
+    session_file = tmp_path / "projects" / "-test" / "sess-3.jsonl"
+    session_file.parent.mkdir(parents=True)
+    session_file.write_text(
+        'NOT JSON\n'
+        '{"role":"user","message":{"content":"Valid"}}\n'
+        '{bad json\n'
+    )
+    mocker.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path)})
+    mocker.patch("os.path.dirname", return_value="/test")
+    result = api._read_session_messages("sess-3")
+    assert len(result) == 1
+    assert result[0]["text"] == "Valid"
+
+
+def test_read_session_messages_nonexistent_file(tmp_path, mocker):
+    mocker.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(tmp_path)})
+    mocker.patch("os.path.dirname", return_value="/test")
+    result = api._read_session_messages("no-such-session")
+    assert result == []

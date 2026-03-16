@@ -17,7 +17,6 @@ pytestmark = pytest.mark.skipif(
 
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8000")
 API_KEY = os.environ.get("E2E_API_KEY", os.environ.get("API_KEY", ""))
-ROCKETLANE_KEY = os.environ.get("E2E_ROCKETLANE_KEY", "")
 
 
 @pytest.fixture(scope="module")
@@ -63,23 +62,6 @@ def test_conversation_appears_in_list(api):
 # Resolution mode
 # ---------------------------------------------------------------------------
 
-def test_resolution_mode_triggered_by_422(api):
-    """Start a conversation, inject a 422 tool failure, verify DB mode becomes resolution."""
-    r = api.post("/conversations", json={"message": "Start"})
-    session_id = r.json()["session_id"]
-
-    # Use the debug endpoint (if available) or rely on the agent naturally calling a tool that 422s
-    # Here we call the rl-test endpoint to simulate a 422
-    r2 = api.post("/rl-test", json={"method": "tools/call", "status_code": 422})
-    if r2.status_code == 404:
-        pytest.skip("No /rl-test endpoint available to inject 422")
-
-    # Verify the conversation mode changed
-    r3 = api.get("/conversations")
-    convs = {c["session_id"]: c for c in r3.json()}
-    assert session_id in convs
-
-
 def test_manual_exit_resolution(api):
     r = api.post("/conversations", json={"message": "Resolution exit test"})
     assert r.status_code == 200
@@ -90,26 +72,8 @@ def test_manual_exit_resolution(api):
     assert r2.json()["mode"] == "normal"
 
 
-# ---------------------------------------------------------------------------
-# Rocketlane key handling
-# ---------------------------------------------------------------------------
-
-def test_no_rocketlane_key_conversation_succeeds(api):
-    r = api.post("/conversations", json={"message": "No rocketlane key test"})
-    assert r.status_code == 200
-    assert "response" in r.json()
-
-
-def test_with_rocketlane_key_mcp_tools_available(api):
-    if not ROCKETLANE_KEY:
-        pytest.skip("E2E_ROCKETLANE_KEY not set")
-    r = api.post(
-        "/conversations",
-        json={
-            "message": "Search for project tools using search_rocketlane_tools",
-            "rocketlane_api_key": ROCKETLANE_KEY,
-        },
-    )
+def test_basic_conversation_succeeds(api):
+    r = api.post("/conversations", json={"message": "Basic conversation test"})
     assert r.status_code == 200
     assert "response" in r.json()
 

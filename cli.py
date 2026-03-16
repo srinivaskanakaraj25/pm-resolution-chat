@@ -18,6 +18,26 @@ def client() -> httpx.Client:
     )
 
 
+def _chat_loop(http: httpx.Client, session_id: str):
+    while True:
+        user = input("You: ").strip()
+
+        if user == "/quit":
+            break
+
+        if user == "/normal":
+            r = http.post(f"/conversations/{session_id}/exit-resolution")
+            r.raise_for_status()
+            typer.secho("Resolution mode exited.", fg=typer.colors.YELLOW)
+            continue
+
+        body = {"message": user}
+        r = http.post(f"/conversations/{session_id}/message", json=body)
+        r.raise_for_status()
+        data = r.json()
+        typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
+
+
 @app.command()
 def start() -> None:
     """Start a new conversation."""
@@ -38,23 +58,7 @@ def start() -> None:
     typer.secho("Type /quit to exit, /normal to exit resolution mode.", fg=typer.colors.CYAN)
 
     with client() as http:
-        while True:
-            user = input("You: ").strip()
-
-            if user == "/quit":
-                break
-
-            if user == "/normal":
-                r = http.post(f"/conversations/{session_id}/exit-resolution")
-                r.raise_for_status()
-                typer.secho("Resolution mode exited.", fg=typer.colors.YELLOW)
-                continue
-
-            body = {"message": user}
-            r = http.post(f"/conversations/{session_id}/message", json=body)
-            r.raise_for_status()
-            data = r.json()
-            typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
+        _chat_loop(http, session_id)
 
 
 @app.command()
@@ -99,23 +103,7 @@ def resume(identifier: str) -> None:
     typer.secho("Type /quit to exit, /normal to exit resolution mode.", fg=typer.colors.CYAN)
 
     with client() as http:
-        while True:
-            user = input("You: ").strip()
-
-            if user == "/quit":
-                break
-
-            if user == "/normal":
-                r = http.post(f"/conversations/{session_id}/exit-resolution")
-                r.raise_for_status()
-                typer.secho("Resolution mode exited.", fg=typer.colors.YELLOW)
-                continue
-
-            body = {"message": user}
-            r = http.post(f"/conversations/{session_id}/message", json=body)
-            r.raise_for_status()
-            data = r.json()
-            typer.secho(f"Claude: {data['response']}", fg=typer.colors.GREEN)
+        _chat_loop(http, session_id)
 
 
 if __name__ == "__main__":

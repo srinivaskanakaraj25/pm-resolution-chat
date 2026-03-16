@@ -227,3 +227,41 @@ async def test_project_id_stored_in_db_on_first_turn(mocker):
 
     _, kwargs = mock_create.call_args
     assert kwargs.get("project_id") == 7
+
+
+# ---------------------------------------------------------------------------
+# send() timeout behavior
+# ---------------------------------------------------------------------------
+
+async def test_send_timeout_returns_timeout_message(mocker):
+    import asyncio
+    agent = _agent()
+    agent.session_id = "sess-timeout"
+
+    async def slow_query(text):
+        await asyncio.sleep(10)
+
+    agent.client.connect = mocker.AsyncMock()
+    agent.client.query = slow_query
+    agent._SEND_TIMEOUT = 0.01  # very short timeout
+
+    result = await agent.send("Hello")
+    assert "timed out" in result.lower()
+
+
+async def test_send_timeout_persists_state(mocker):
+    import asyncio
+    mock_update = mocker.patch("agent_client.update_conversation")
+    mock_db = MagicMock()
+    agent = _agent(db_conn=mock_db)
+    agent.session_id = "sess-timeout-db"
+
+    async def slow_query(text):
+        await asyncio.sleep(10)
+
+    agent.client.connect = mocker.AsyncMock()
+    agent.client.query = slow_query
+    agent._SEND_TIMEOUT = 0.01
+
+    await agent.send("Hello")
+    mock_update.assert_called_once()

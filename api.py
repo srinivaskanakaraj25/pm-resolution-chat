@@ -1,5 +1,12 @@
+import glob
 import os
-os.environ["PATH"] = f"/root/.npm-global/bin:/usr/local/bin:{os.environ.get('PATH', '')}"
+
+def _configure_deploy_path():
+    """Ensure Claude Code CLI is on PATH in Railway container."""
+    if os.path.exists("/root/.npm-global/bin"):
+        os.environ["PATH"] = f"/root/.npm-global/bin:/usr/local/bin:{os.environ.get('PATH', '')}"
+
+_configure_deploy_path()
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -130,12 +137,11 @@ async def get_conversation_detail(id: str, _: str = Security(verify_api_key)):
 @app.get("/debug/sessions")
 async def debug_sessions(_: str = Security(verify_api_key)):
     """List Claude session files on disk for diagnosis."""
-    import glob as _glob
     claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
     cwd = os.path.dirname(os.path.abspath(__file__))
     project_hash = cwd.replace("/", "-")
     session_dir = Path(claude_config_dir) / "projects" / project_hash
-    files = sorted(_glob.glob(str(session_dir / "*.jsonl")))
+    files = sorted(glob.glob(str(session_dir / "*.jsonl")))
     return {
         "claude_config_dir": claude_config_dir,
         "session_dir": str(session_dir),
