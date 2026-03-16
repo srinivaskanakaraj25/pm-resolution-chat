@@ -64,21 +64,37 @@ class AgentClient:
             ],
         }
 
-        claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
+        self._claude_config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "/data")
+        self._cwd = os.path.dirname(os.path.abspath(__file__))
+        self._hooks = hooks
+        self._resume_session_id = resume_session_id
+
+        self.client = self._build_client(resume=resume_session_id)
+
+    def _build_client(self, resume: Optional[str] = None) -> ClaudeSDKClient:
         options = ClaudeAgentOptions(
             system_prompt=self.prompts["system"],
-            hooks=hooks,
-            resume=resume_session_id,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+            hooks=self._hooks,
+            resume=resume,
+            cwd=self._cwd,
             setting_sources=["project"],
-            stderr=lambda line: logger.debug("[claude stderr] %s", line),
-            env={"CLAUDE_CONFIG_DIR": claude_config_dir},
+            stderr=lambda line: logger.warning("[claude stderr] %s", line),
+            env={"CLAUDE_CONFIG_DIR": self._claude_config_dir},
         )
-
-        self.client = ClaudeSDKClient(options=options)
+        return ClaudeSDKClient(options=options)
 
     async def connect(self):
-        await self.client.connect()
+        try:
+            await self.client.connect()
+        except Exception:
+            if self._resume_session_id is None:
+                raise
+            logger.error(
+                "Resume failed for session %s — falling back to new session",
+                self._resume_session_id,
+            )
+            self.client = self._build_client(resume=None)
+            await self.client.connect()
 
     async def disconnect(self):
         await self.client.disconnect()
